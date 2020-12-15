@@ -286,6 +286,9 @@ public class StmtExecutor {
                 context.getState().setIsQuery(true);
                 int retryTime = Config.max_query_retry_time;
                 for (int i = 0; i < retryTime; i ++) {
+                    int originTimeout = context.getSessionVariable().getQueryTimeoutS();
+                    int realTimeout = Math.min(originTimeout, Config.mt_max_query_timeout);
+                    context.getSessionVariable().setQueryTimeoutS(realTimeout);
                     try {
                         //reset query id for each retry
                         if (i > 0) {
@@ -309,6 +312,7 @@ public class StmtExecutor {
                             throw e;
                         }
                     } finally {
+                        context.getSessionVariable().setQueryTimeoutS(originTimeout);
                         QeProcessorImpl.INSTANCE.unregisterQuery(context.queryId());
                     }
                 }
@@ -777,9 +781,10 @@ public class StmtExecutor {
         coord = new Coordinator(context, analyzer, planner);
         QeProcessorImpl.INSTANCE.registerQuery(context.queryId(),
                 new QeProcessorImpl.QueryInfo(context, originStmt.originStmt, coord));
+        coord.setTimeout(context.getSessionVariable().getQueryTimeoutS());
         coord.exec();
         plannerProfile.setQueryScheduleFinishTime();
-        while (true) {
+        do {
             batch = coord.getNext();
             // for outfile query, there will be only one empty batch send back with eos flag
             if (batch.getBatch() != null && !isOutfileQuery) {
@@ -794,10 +799,7 @@ public class StmtExecutor {
                 }
                 context.updateReturnRows(batch.getBatch().getRows().size());
             }
-            if (batch.isEos()) {
-                break;
-            }
-        }
+        } while (!batch.isEos());
         if (!isSendFields && !isOutfileQuery) {
             sendFields(queryStmt.getColLabels(), queryStmt.getResultExprs());
         }

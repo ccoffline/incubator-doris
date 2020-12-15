@@ -1301,4 +1301,8 @@ public class Config extends ConfigBase {
      */
     @ConfField
     public static boolean enable_alpha_rowset = false;
+
+
+    @ConfField(mutable = true)
+    public static int mt_max_query_timeout =  50; // 50s
 }
